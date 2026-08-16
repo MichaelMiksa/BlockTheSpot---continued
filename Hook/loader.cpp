@@ -106,9 +106,13 @@ VOID CALLBACK bts_main(ULONG_PTR param)
 		hook_developer_mode(spotify_dll_handle);
 		libcef_IAT_hook_GetProcAddress(spotify_dll_handle);
 		hook_cef_url(libcef_dll_handle);
-		hook_cef_reader(libcef_dll_handle);	// not finished yet.
+		hook_cef_reader(libcef_dll_handle);
+
+		// NEW: we apply the IAT patch to Spotify.exe and spotify.dll
+		hook_libcef_IAT(GetModuleHandleW(NULL), libcef_dll_handle);
+		hook_libcef_IAT(spotify_dll_handle, libcef_dll_handle);
+
 		modify_css_init();
-		// FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
 		log_info("Loader initialized successfully.");
 	}
 }
