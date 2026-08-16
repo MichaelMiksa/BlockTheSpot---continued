@@ -45,6 +45,7 @@ or just reinstall Spotify
 ### Additional Notes:
 
 * For more support https://github.com/thomas-quant/BlockTheSpot-Resilient or https://github.com/mrpond/blockthespot.
+* EDUCATIONAL USE ONLY
 
 
 
