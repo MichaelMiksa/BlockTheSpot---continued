@@ -154,7 +154,7 @@ bool hook_libcef_IAT(HMODULE module, HMODULE libcef_dll_handle) noexcept
 			if (0 == lstrcmpiA(dll_name, "libcef.dll")) {
 				log_debug("hook_libcef_IAT: found libcef.dll in Delay-Load Imports!");
 
-				// Otteniamo la tabella dei nomi (INT) e quella degli indirizzi (IAT) in parallelo
+				// We get the tables of names (INT) and the one for adresses (IAT) in parallel
 				PIMAGE_THUNK_DATA name_thunk = reinterpret_cast<PIMAGE_THUNK_DATA>(
 					reinterpret_cast<BYTE*>(module) + delay_imports->ImportNameTableRVA
 					);
@@ -164,14 +164,14 @@ bool hook_libcef_IAT(HMODULE module, HMODULE libcef_dll_handle) noexcept
 
 				bool patched = false;
 				for (; name_thunk->u1.AddressOfData; ++name_thunk, ++addr_thunk) {
-					// Verifichiamo che la funzione sia importata per nome e non per ordinale
+					// We check if the function is imported by name and not by ordinal number
 					if (!IMAGE_SNAP_BY_ORDINAL(name_thunk->u1.Ordinal)) {
 						PIMAGE_IMPORT_BY_NAME import_by_name = reinterpret_cast<PIMAGE_IMPORT_BY_NAME>(
 							reinterpret_cast<BYTE*>(module) + name_thunk->u1.AddressOfData
 							);
 						LPCSTR func_name = reinterpret_cast<LPCSTR>(import_by_name->Name);
 
-						// Se il nome coincide, sovrascriviamo lo slot di memoria IAT direttamente
+						// If the name matches, we re-write the IAT memory directly
 						if (0 == lstrcmpiA(func_name, "cef_urlrequest_create")) {
 							PROC* func = reinterpret_cast<PROC*>(&addr_thunk->u1.Function);
 							DWORD oldProtect;
