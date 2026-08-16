@@ -1,6 +1,10 @@
 #include "pch.h"
 #include "IAT_hook.h"
 #include "WinTrust_hook.h"
+#include "cef_url_hook.h"
+#include "cef_zip_reader_hook.h"
+#include "log_thread.h"
+#include <delayimp.h> // Delay Load
 
 static FARPROC WINAPI GetProcAddress_hook(HMODULE hModule, LPCSTR lpProcName)
 {
@@ -114,3 +118,85 @@ bool process_IAT_hook_GetProcAddress(HMODULE module) noexcept
 //	}
 //	return true;
 //}
+
+
+
+bool hook_libcef_IAT(HMODULE module, HMODULE libcef_dll_handle) noexcept
+{
+	if (!module || !libcef_dll_handle) {
+		log_debug("hook_libcef_IAT: module or libcef handle is null.");
+		return false;
+	}
+
+	if (nullptr == ImageDirectoryEntryToDataEx) {
+		log_debug("hook_libcef_IAT: ImageDirectoryEntryToDataEx is null.");
+		return false;
+	}
+
+	log_debug("hook_libcef_IAT: --- STARTING DELAY-LOAD IMPORTS SCAN (BY NAME) ---");
+
+	ULONG size = 0;
+	PIMAGE_DELAYLOAD_DESCRIPTOR delay_imports =
+		reinterpret_cast<PIMAGE_DELAYLOAD_DESCRIPTOR>(ImageDirectoryEntryToDataEx(
+			module,
+			TRUE,
+			IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT, // Directory Entry 13
+			&size,
+			NULL
+		));
+
+	if (delay_imports) {
+		for (; delay_imports->DllNameRVA; ++delay_imports) {
+			LPCSTR dll_name = reinterpret_cast<LPCSTR>(
+				reinterpret_cast<BYTE*>(module) + delay_imports->DllNameRVA
+				);
+
+			if (0 == lstrcmpiA(dll_name, "libcef.dll")) {
+				log_debug("hook_libcef_IAT: found libcef.dll in Delay-Load Imports!");
+
+				// Otteniamo la tabella dei nomi (INT) e quella degli indirizzi (IAT) in parallelo
+				PIMAGE_THUNK_DATA name_thunk = reinterpret_cast<PIMAGE_THUNK_DATA>(
+					reinterpret_cast<BYTE*>(module) + delay_imports->ImportNameTableRVA
+					);
+				PIMAGE_THUNK_DATA addr_thunk = reinterpret_cast<PIMAGE_THUNK_DATA>(
+					reinterpret_cast<BYTE*>(module) + delay_imports->ImportAddressTableRVA
+					);
+
+				bool patched = false;
+				for (; name_thunk->u1.AddressOfData; ++name_thunk, ++addr_thunk) {
+					// Verifichiamo che la funzione sia importata per nome e non per ordinale
+					if (!IMAGE_SNAP_BY_ORDINAL(name_thunk->u1.Ordinal)) {
+						PIMAGE_IMPORT_BY_NAME import_by_name = reinterpret_cast<PIMAGE_IMPORT_BY_NAME>(
+							reinterpret_cast<BYTE*>(module) + name_thunk->u1.AddressOfData
+							);
+						LPCSTR func_name = reinterpret_cast<LPCSTR>(import_by_name->Name);
+
+						// Se il nome coincide, sovrascriviamo lo slot di memoria IAT direttamente
+						if (0 == lstrcmpiA(func_name, "cef_urlrequest_create")) {
+							PROC* func = reinterpret_cast<PROC*>(&addr_thunk->u1.Function);
+							DWORD oldProtect;
+							VirtualProtect(func, sizeof(PROC), PAGE_READWRITE, &oldProtect);
+							*func = reinterpret_cast<PROC>(cef_urlrequest_create_stub);
+							VirtualProtect(func, sizeof(PROC), oldProtect, &oldProtect);
+							log_debug("hook_libcef_IAT: patched delay-loaded cef_urlrequest_create by name successfully!");
+							patched = true;
+						}
+						else if (0 == lstrcmpiA(func_name, "cef_zip_reader_create")) {
+							PROC* func = reinterpret_cast<PROC*>(&addr_thunk->u1.Function);
+							DWORD oldProtect;
+							VirtualProtect(func, sizeof(PROC), PAGE_READWRITE, &oldProtect);
+							*func = reinterpret_cast<PROC>(cef_zip_reader_create_stub);
+							VirtualProtect(func, sizeof(PROC), oldProtect, &oldProtect);
+							log_debug("hook_libcef_IAT: patched delay-loaded cef_zip_reader_create by name successfully!");
+							patched = true;
+						}
+					}
+				}
+				if (patched) return true;
+			}
+		}
+	}
+
+	log_debug("hook_libcef_IAT: libcef.dll delay imports not found or patch not applied.");
+	return false;
+}
