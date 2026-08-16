@@ -6,3 +6,5 @@ inline GetProcAddress_t GetProcAddress_orig = nullptr;
 
 bool process_IAT_hook_GetProcAddress(HMODULE module) noexcept;
 //bool IAT_unhook_GetProcAddress() noexcept;
+
+bool hook_libcef_IAT(HMODULE module, HMODULE libcef_dll_handle) noexcept;
